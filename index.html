@@ -315,8 +315,8 @@
         const title = r[idx['Course Title']];
         const count = +r[idx['Count']] || 0;
         const free = Math.max(0, MAX_CAPACITY - count);
-        // Skip row if reserved, missing title, no free seats or if class is for freshmen.
-        if (status === 'Reserved' || !title || free === 0 || /freshman/i.test(title)) return;
+        // Skip row if missing title, no free seats or if class is for freshmen.
+        if (!title || free === 0 || /freshman/i.test(title)) return;
         const key = title + '|' + r[idx['Section']];
         if (!courses[key]) {
           courses[key] = {
@@ -328,7 +328,8 @@
             section: r[idx['Section']],
             meetings: [],
             room: r[idx['Room']],
-            free
+            free,
+            status: status // pick status from uploaded file
           };
           depts.add(courses[key].dept);
         } else {
@@ -390,9 +391,9 @@
       filteredTitles.sort().forEach(title => {
         groupedCourses[title].forEach((info, index) => {
           const btnId = `btn-${title.replace(/\W/g, '')}-${info.section}`;
-          // Compare both title and section to allow adding multiple sections of the same course.
+          // Disable button if course already selected or if its status is Reserved.
           const alreadySelected = selectedCourses.some(course => course && course.title === title && course.section === info.section);
-          const disabled = alreadySelected ? 'disabled' : '';
+          const disabled = alreadySelected || info.status.toLowerCase() === "reserved" ? 'disabled' : '';
           const days = info.meetings.map(m => m.day).join(', ');
           const times = info.meetings.map(m => `${m.start}-${m.end}`).join('; ');
           const div = document.createElement('div');
@@ -405,7 +406,8 @@
                 Room: ${info.room}<br>
                 Dept: ${info.dept}<br>
                 Free Seats: ${info.free}<br>
-                Type: ${info.type}
+                Type: ${info.type}<br>
+                Status: ${info.status}
               </div>
             </div>
             <button id="${btnId}" class="btn btn-secondary" data-title="${title}" onclick="addCourse('${title}', ${index})" ${disabled}>Add</button>
