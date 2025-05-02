@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Enhanced Course Section Selector</title>
+    <!-- SheetJS for reading Excel/CSV files -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <!-- html2canvas and jsPDF for PDF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.3.2/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        /* Reset */
+        * {
+          box-sizing: border-box;
+        }
+        body {
+          font-family: Arial, sans-serif;
+          margin: 0;
+          padding: 0;
+          background: #f5f5f5;
+          color: #333;
+        }
+
+        /* Container and layout */
+        .container {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 20px;
+          padding: 20px;
+        }
+        header {
+          grid-column: 1 / -1;
+          background: #007bff;
+          color: white;
+          padding: 15px;
+          text-align: center;
+        }
+        .panel {
+          background: white;
+          padding: 15px;
+          border-radius: 6px;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+
+        /* Controls */
+        .controls {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-bottom: 15px;
+        }
+        .controls input,
+        .controls select {
+          flex: 1;
+          min-width: 150px;
+        }
+        input, select, .btn {
+          padding: 8px;
+          border: 1px solid #ccc;
+          border-radius: 4px;
+        }
+        .btn {
+          cursor: pointer;
+          font-weight: bold;
+          background: #007bff;
+          color: white;
+          border: none;
+        }
+        .btn:disabled {
+          background: #ccc;
+          cursor: not-allowed;
+        }
+
+        /* Table styling */
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 10px;
+          cursor: default;
+        }
+        th, td {
+          border: 1px solid #ddd;
+          padding: 8px;
+          text-align: center;
+        }
+        th {
+          background: #f0f0f0;
+          user-select: none;
+        }
+        th.sortable:hover {
+          background: #e0e0e0;
+          cursor: pointer;
+        }
+
+        /* Routine styling */
+        #routine table th {
+          background: #007bff;
+          color: white;
+        }
+
+        /* Course List styling */
+        .section-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 10px;
+          border-bottom: 1px solid #eee;
+        }
+        .details {
+          font-size: 0.85em;
+          color: #555;
+        }
+
+        /* Notification */
+        .notification {
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          padding: 10px 15px;
+          border-radius: 4px;
+          color: white;
+          display: none;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        }
+        .notification.success {
+          background: #28a745;
+        }
+        .notification.error {
+          background: #dc3545;
+        }
+        .input-error {
+          border: 2px solid #dc3545;
+        }
+
+        /* Total count alignment */
+        #totalCount {
+          margin-top: 10px;
+          font-weight: bold;
+          text-align: right;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+          .container {
+            grid-template-columns: 1fr;
+          }
+          .controls {
+            flex-direction: column;
+          }
+          table, th, td {
+            font-size: 0.9em;
+          }
+          header {
+            padding: 10px;
+          }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>Course Section Selector</h1>
+</header>
+<div class="notification" id="notification"></div>
+<div class="container">
+    <section class="panel" id="controlsPanel">
+        <h2>Controls</h2>
+        <div class="controls">
+            <button id="dropZone" class="btn">Upload Excel/CSV</button>
+            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none;" />
+            <input type="text" id="searchInput" placeholder="Search courses..." disabled />
+            <select id="deptFilter" disabled>
+                <option value="">All Departments</option>
+            </select>
+            <!-- New dropdown for class type filtering -->
+            <select id="classTypeFilter" disabled>
+                <option value="">All Class Types</option>
+                <option value="theory">Theory</option>
+                <option value="lab">Lab</option>
+            </select>
+            <button id="clearAll" class="btn" disabled>Clear All</button>
+        </div>
+        <h3>Available Courses</h3>
+        <div id="courseList" style="max-height: 400px; overflow-y: auto;"></div>
+        <div id="noCourses" style="display:none;">No courses found.</div>
+    </section>
+
+    <section class="panel">
+        <h2>Selected Courses</h2>
+        <table id="selectedTable">
+            <thead>
+            <tr>
+                <th class="sortable" data-column="code">Code</th>
+                <th>Course</th>
+                <th>Section</th>
+                <th>Days</th>
+                <th>Times</th>
+                <th>Room(s)</th>
+                <th>Student Number</th>
+                <th>Seats Free</th>
+                <th>Action</th>
+            </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+        <div id="totalCount">Total Students: 0</div>
+        <div style="margin-top:10px; text-align:right;">
+            <button id="generateRoutine" class="btn" disabled>Generate Routine</button>
+            <button id="downloadPdf" class="btn" disabled>Download PDF</button>
+        </div>
+    </section>
+
+    <section class="panel" style="grid-column: 1 / -1;">
+        <h2>Generated Routine</h2>
+        <div id="routine" style="overflow-x:auto;"></div>
+    </section>
+</div>
+
+<script>
+    // Constants and state variables
+    const MAX_CAPACITY = 37;
+    let courses = {};
+    let groupedCourses = {};
+    let selectedCourses = [];
+    let sortAscending = true;
+
+    // Initialization function to wire-up all event listeners
+    function init() {
+      document.getElementById('dropZone').addEventListener('click', () => {
+        document.getElementById('fileInput').click();
+      });
+      document.getElementById('fileInput').addEventListener('change', handleFile);
+      document.getElementById('searchInput').addEventListener('input', renderCourseList);
+      document.getElementById('deptFilter').addEventListener('change', renderCourseList);
+      document.getElementById('classTypeFilter').addEventListener('change', renderCourseList);
+      document.getElementById('clearAll').addEventListener('click', clearAll);
+      document.getElementById('generateRoutine').addEventListener('click', generateRoutine);
+      document.getElementById('downloadPdf').addEventListener('click', downloadPDF);
+      document.querySelector('th.sortable').addEventListener('click', () => {
+        sortAscending = !sortAscending;
+        sortSelectedCourses('code', sortAscending);
+        renderSelectedTable();
+      });
+    }
+
+    // Notification helper
+    function notify(msg, type = 'success') {
+      const el = document.getElementById('notification');
+      el.textContent = msg;
+      el.className = `notification ${type}`;
+      el.style.display = 'block';
+      setTimeout(() => el.style.display = 'none', 3000);
+    }
+
+    // Clear all courses and reload the page
+    function clearAll() {
+      if (confirm("Are you sure you want to clear all?")) {
+        location.reload();
+      }
+    }
+
+    // Handle file input change event
+    function handleFile(e) {
+      resetState();
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = evt => processData(evt.target.result, file.name);
+      reader.onerror = () => notify('Failed to read file', 'error');
+      if (/\.csv$/i.test(file.name)) {
+        reader.readAsText(file);
+      } else {
+        reader.readAsArrayBuffer(file);
+      }
+    }
+
+    // Reset state when a new file is loaded
+    function resetState() {
+      courses = {};
+      groupedCourses = {};
+      selectedCourses = [];
+      document.querySelector('#selectedTable tbody').innerHTML = '';
+      document.getElementById('routine').innerHTML = '';
+      document.getElementById('generateRoutine').disabled = true;
+      document.getElementById('downloadPdf').disabled = true;
+      document.getElementById('clearAll').disabled = false;
+      document.getElementById('searchInput').disabled = true;
+      document.getElementById('deptFilter').disabled = true;
+      document.getElementById('classTypeFilter').disabled = true;
+      document.getElementById('courseList').innerHTML = '';
+      document.getElementById('noCourses').style.display = 'none';
+    }
+
+    // Process CSV or Excel data and build the courses structure.
+    // When multiple rows occur for the same course-section key, different room numbers are concatenated.
+    function processData(data, fileName) {
+      let sheetData = [];
+      if (/\.csv$/i.test(fileName)) {
+        sheetData = data.split(/\r?\n/).map(line => line.split(','));
+      } else {
+        const arr = new Uint8Array(data);
+        const wb = XLSX.read(arr, { type: 'array' });
+        sheetData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+      }
+
+      const [hdr, ...rows] = sheetData;
+      const idx = hdr.reduce((acc, h, i) => {
+        if (h) acc[h.trim()] = i;
+        return acc;
+      }, {});
+
+      const depts = new Set();
+      rows.forEach(r => {
+        const status = r[idx['Status']];
+        const title = r[idx['Course Title']];
+        const count = +r[idx['Count']] || 0;
+        const free = Math.max(0, MAX_CAPACITY - count);
+        // Skip row if reserved, missing title, no free seats or if class is for freshmen.
+        if (status === 'Reserved' || !title || free === 0 || /freshman/i.test(title)) return;
+        const key = title + '|' + r[idx['Section']];
+        if (!courses[key]) {
+          courses[key] = {
+            code: r[idx['Course Code']],
+            title,
+            dept: r[idx['Department']],
+            faculty: r[idx['Faculty']],
+            type: r[idx['Type']], // theory or lab
+            section: r[idx['Section']],
+            meetings: [],
+            room: r[idx['Room']],
+            free
+          };
+          depts.add(courses[key].dept);
+        } else {
+          // If room value differs, append it
+          const currentRoom = courses[key].room;
+          const newRoom = r[idx['Room']];
+          if (!currentRoom.includes(newRoom)) {
+            courses[key].room += ", " + newRoom;
+          }
+        }
+        const meeting = {
+          day: r[idx['Day']],
+          start: r[idx['Start Time']],
+          end: r[idx['End Time']]
+        };
+        if (!courses[key].meetings.some(m => m.day === meeting.day && m.start === meeting.start && m.end === meeting.end)) {
+          courses[key].meetings.push(meeting);
+        }
+      });
+
+      // Group courses by title
+      Object.values(courses).forEach(info => {
+        groupedCourses[info.title] = groupedCourses[info.title] || [];
+        groupedCourses[info.title].push(info);
+      });
+
+      // Initialize dropdown filters and enable controls
+      document.getElementById('deptFilter').innerHTML = ['<option value="">All Departments</option>']
+        .concat(Array.from(depts).map(d => `<option>${d}</option>`)).join('');
+      document.getElementById('searchInput').disabled = false;
+      document.getElementById('deptFilter').disabled = false;
+      document.getElementById('classTypeFilter').disabled = false;
+      renderCourseList();
+    }
+
+    // Render course list based on search term, department, and class type filters.
+    function renderCourseList() {
+      const query = document.getElementById('searchInput').value.trim().toLowerCase();
+      const dept = document.getElementById('deptFilter').value;
+      const classType = document.getElementById('classTypeFilter').value;
+      const listEl = document.getElementById('courseList');
+      listEl.innerHTML = '';
+
+      const filteredTitles = Object.keys(groupedCourses).filter(title => {
+        // Filter on title search and department match.
+        const titleMatch = !query || title.toLowerCase().includes(query);
+        const deptMatch = !dept || groupedCourses[title][0].dept === dept;
+        // Filter based on class type if selected.
+        const typeMatch = !classType || groupedCourses[title][0].type.toLowerCase() === classType;
+        return titleMatch && deptMatch && typeMatch;
+      });
+
+      if (!filteredTitles.length) {
+        document.getElementById('noCourses').style.display = 'block';
+        return;
+      }
+      document.getElementById('noCourses').style.display = 'none';
+
+      filteredTitles.sort().forEach(title => {
+        groupedCourses[title].forEach((info, index) => {
+          const btnId = `btn-${title.replace(/\W/g, '')}-${info.section}`;
+          // Compare both title and section to allow adding multiple sections of the same course.
+          const alreadySelected = selectedCourses.some(course => course && course.title === title && course.section === info.section);
+          const disabled = alreadySelected ? 'disabled' : '';
+          const days = info.meetings.map(m => m.day).join(', ');
+          const times = info.meetings.map(m => `${m.start}-${m.end}`).join('; ');
+          const div = document.createElement('div');
+          div.className = 'section-item';
+          div.innerHTML = `
+            <div>
+              <strong>${info.code} - ${title} (${info.section})</strong>
+              <div class="details">
+                ${days} ${times}<br>
+                Room: ${info.room}<br>
+                Dept: ${info.dept}<br>
+                Free Seats: ${info.free}<br>
+                Type: ${info.type}
+              </div>
+            </div>
+            <button id="${btnId}" class="btn btn-secondary" data-title="${title}" onclick="addCourse('${title}', ${index})" ${disabled}>Add</button>
+          `;
+          listEl.appendChild(div);
+        });
+      });
+    }
+
+    // Add course to selected list.
+    function addCourse(title, idx) {
+      const info = groupedCourses[title][idx];
+      // Check using both title and section so that different sections can be added.
+      if (selectedCourses.some(course => course && course.title === title && course.section === info.section)) {
+        return notify('Course already selected', 'error');
+      }
+      selectedCourses.push(info);
+      renderSelectedTable();
+      document.getElementById('generateRoutine').disabled = false;
+      notify('Course added');
+    }
+
+    // Remove course from selected list.
+    function removeCourse(id) {
+      const removedCourse = selectedCourses[id];
+      selectedCourses[id] = null;
+      document.getElementById(`sel-${id}`).remove();
+      if (!selectedCourses.some(course => course && course.title === removedCourse.title && course.section === removedCourse.section)) {
+        Array.from(document.querySelectorAll(`button[data-title='${removedCourse.title}']`)).forEach(button => {
+          button.disabled = false;
+        });
+      }
+      if (!selectedCourses.some(Boolean)) {
+        document.getElementById('generateRoutine').disabled = true;
+      }
+      updateTotalCount();
+    }
+
+    // Validate student number input.
+    function validateInput(input, maxVal) {
+      const value = parseInt(input.value, 10);
+      if (!value || value < 1 || value > maxVal) {
+        input.classList.add('input-error');
+        notify(`Student number must be between 1 and ${maxVal}`, 'error');
+      } else {
+        input.classList.remove('input-error');
+      }
+    }
+
+    // Update total student count.
+    function updateTotalCount() {
+      let total = 0;
+      selectedCourses.forEach((course, i) => {
+        if (!course) return;
+        const numInput = document.getElementById(`num-${i}`);
+        total += numInput && numInput.value ? +numInput.value : 0;
+      });
+      document.getElementById('totalCount').textContent = "Total Students: " + total;
+    }
+
+    // Sort selected courses.
+    function sortSelectedCourses(prop, ascending = true) {
+      selectedCourses = selectedCourses.filter(Boolean);
+      selectedCourses.sort((a, b) => {
+        if (a[prop] < b[prop]) return ascending ? -1 : 1;
+        if (a[prop] > b[prop]) return ascending ? 1 : -1;
+        return 0;
+      });
+    }
+
+    // Convert time string to minutes.
+    function parseTime(str) {
+      const parts = str.split(' ');
+      const timeParts = parts[0].split(':').map(Number);
+      let [hours, minutes] = timeParts;
+      if (parts[1]) {
+        const period = parts[1].toUpperCase();
+        if (period === 'PM' && hours < 12) hours += 12;
+        if (period === 'AM' && hours === 12) hours = 0;
+      }
+      return hours * 60 + minutes;
+    }
+
+    // Generate routine by checking schedule conflicts.
+    function generateRoutine() {
+      const rows = [];
+      const sched = {};
+      selectedCourses.forEach((course, i) => {
+        if (!course) return;
+        course.meetings.forEach(m => {
+          const start = parseTime(m.start);
+          const end = parseTime(m.end);
+          sched[m.day] = sched[m.day] || [];
+          const conflict = sched[m.day].some(([ss, ee]) => start < ee && ss < end);
+          sched[m.day].push([start, end]);
+          const numInput = document.getElementById(`num-${i}`);
+          const num = numInput && numInput.value ? +numInput.value : 0;
+          rows.push({
+            day: m.day,
+            time: `${m.start}-${m.end}`,
+            code: course.code,
+            sec: course.section,
+            title: course.title,
+            room: course.room,
+            assigned: conflict ? '' : (num > course.free ? 'Over cap' : num),
+            status: conflict ? 'Time conflict' : ''
+          });
+        });
+      });
+      renderRoutine(rows);
+      document.getElementById('downloadPdf').disabled = false;
+    }
+
+    // Render the routine table with days sorted as Sunday, Monday, ...
+    // and time slots sorted from earliest AM to latest PM.
+    function renderRoutine(rows) {
+      const container = document.getElementById('routine');
+      container.innerHTML = '';
+      if (!rows.length) {
+        container.textContent = 'No courses scheduled.';
+        return;
+      }
+      // Define order for days
+      const dayOrder = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const daysSet = new Set(rows.map(r => r.day));
+      const days = dayOrder.filter(day => daysSet.has(day));
+
+      // Sort slots according to their start time
+      const slotsSet = new Set(rows.map(r => r.time));
+      let slots = Array.from(slotsSet);
+      slots.sort((a, b) => {
+        const aStart = parseTime(a.split('-')[0]);
+        const bStart = parseTime(b.split('-')[0]);
+        return aStart - bStart;
+      });
+
+      const tbl = document.createElement('table');
+      let html = `<thead><tr><th>Day</th>${slots.map(s => `<th>${s}</th>`).join('')}</tr></thead><tbody>`;
+      days.forEach(day => {
+        html += `<tr><td>${day}</td>`;
+        slots.forEach(slot => {
+          const cellRows = rows.filter(r => r.day === day && r.time === slot);
+          html += `<td>${cellRows.map(r =>
+            `${r.code} (${r.sec})<br>${r.title}<br>${r.room}<br>Assigned: ${r.assigned}` +
+            (r.status ? `<br><em>${r.status}</em>` : '')
+          ).join('<hr>')}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody>';
+      tbl.innerHTML = html;
+      container.appendChild(tbl);
+    }
+
+    // Download routine as a PDF.
+    function downloadPDF() {
+      html2canvas(document.getElementById('routine')).then(canvas => {
+        const img = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ orientation: 'landscape' });
+        const width = pdf.internal.pageSize.getWidth();
+        const height = (canvas.height * width) / canvas.width;
+        pdf.addImage(img, 'PNG', 0, 0, width, height);
+        pdf.save(`routine_${new Date().toISOString().slice(0,10)}.pdf`);
+      });
+    }
+
+    // Render selected courses table.
+    function renderSelectedTable() {
+      const tbody = document.querySelector('#selectedTable tbody');
+      tbody.innerHTML = '';
+      selectedCourses.forEach((course, i) => {
+        if (!course) return;
+        const days = course.meetings.map(m => m.day).join(', ');
+        const times = course.meetings.map(m => `${m.start}-${m.end}`).join('; ');
+        const row = document.createElement('tr');
+        row.id = `sel-${i}`;
+        row.innerHTML = `
+          <td>${course.code}</td>
+          <td>${course.title}</td>
+          <td>${course.section}</td>
+          <td>${days}</td>
+          <td>${times}</td>
+          <td>${course.room}</td>
+          <td>
+            <input type="number" id="num-${i}" min="1" max="${course.free}" placeholder="Fill student number"
+              onblur="validateInput(this, ${course.free}); updateTotalCount();" onchange="updateTotalCount();">
+          </td>
+          <td>${course.free}</td>
+          <td><button class="btn btn-secondary" onclick="removeCourse(${i})">Remove</button></td>
+        `;
+        tbody.appendChild(row);
+      });
+      updateTotalCount();
+    }
+
+    // Initialize the application
+    init();
+</script>
+</body>
+</html>
