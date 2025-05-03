@@ -2,18 +2,163 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <!-- Updated viewport meta tag to render the page at 100% scale -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Section View</title>
     <!-- SheetJS for reading Excel/CSV files -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     <!-- html2canvas and jsPDF for PDF export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.3.2/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Reset */
+        * {
+          box-sizing: border-box;
+        }
+        body {
+          font-family: Arial, sans-serif;
+          margin: 0;
+          padding: 0;
+          background: #f5f5f5;
+          color: #333;
+        }
+
+        /* Container and layout */
+        .container {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 20px;
+          padding: 20px;
+        }
+        header {
+          grid-column: 1 / -1;
+          background: #007bff;
+          color: white;
+          padding: 15px;
+          text-align: center;
+        }
+        .panel {
+          background: white;
+          padding: 15px;
+          border-radius: 6px;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+
+        /* Controls */
+        .controls {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-bottom: 15px;
+        }
+        .controls input,
+        .controls select {
+          flex: 1;
+          min-width: 150px;
+        }
+        input, select, .btn {
+          padding: 8px;
+          border: 1px solid #ccc;
+          border-radius: 4px;
+        }
+        .btn {
+          cursor: pointer;
+          font-weight: bold;
+          background: #007bff;
+          color: white;
+          border: none;
+        }
+        .btn:disabled {
+          background: #ccc;
+          cursor: not-allowed;
+        }
+
+        /* Table styling */
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 10px;
+          cursor: default;
+        }
+        th, td {
+          border: 1px solid #ddd;
+          padding: 8px;
+          text-align: center;
+        }
+        th {
+          background: #f0f0f0;
+          user-select: none;
+        }
+        th.sortable:hover {
+          background: #e0e0e0;
+          cursor: pointer;
+        }
+
+        /* Routine styling */
+        #routine table th {
+          background: #007bff;
+          color: white;
+        }
+
+        /* Course List styling */
+        .section-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 10px;
+          border-bottom: 1px solid #eee;
+        }
+        .details {
+          font-size: 0.85em;
+          color: #555;
+        }
+
+        /* Notification */
+        .notification {
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          padding: 10px 15px;
+          border-radius: 4px;
+          color: white;
+          display: none;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        }
+        .notification.success {
+          background: #28a745;
+        }
+        .notification.error {
+          background: #dc3545;
+        }
+        .input-error {
+          border: 2px solid #dc3545;
+        }
+
+        /* Total count alignment */
+        #totalCount {
+          margin-top: 10px;
+          font-weight: bold;
+          text-align: right;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+          .container {
+            grid-template-columns: 1fr;
+          }
+          .controls {
+            flex-direction: column;
+          }
+          table, th, td {
+            font-size: 0.9em;
+          }
+          header {
+            padding: 10px;
+          }
+        }
+    </style>
 </head>
 <body>
-<header id="Section-view">
+<header>
     <h1>Section View</h1>
 </header>
 <div class="notification" id="notification"></div>
@@ -27,7 +172,7 @@
             <select id="deptFilter" disabled>
                 <option value="">All Departments</option>
             </select>
-            <!-- Dropdown for class type filtering -->
+            <!-- New dropdown for class type filtering -->
             <select id="classTypeFilter" disabled>
                 <option value="">All Class Types</option>
                 <option value="theory">Theory</option>
@@ -147,6 +292,7 @@
     }
 
     // Process CSV or Excel data and build the courses structure.
+    // When multiple rows occur for the same course-section key, different room numbers are concatenated.
     function processData(data, fileName) {
       let sheetData = [];
       if (/\.csv$/i.test(fileName)) {
@@ -169,6 +315,7 @@
         const title = r[idx['Course Title']];
         const count = +r[idx['Count']] || 0;
         const free = Math.max(0, MAX_CAPACITY - count);
+        // Skip row if missing title, no free seats or if class is for freshmen.
         if (!title || free === 0 || /freshman/i.test(title)) return;
         const key = title + '|' + r[idx['Section']];
         if (!courses[key]) {
@@ -177,15 +324,16 @@
             title,
             dept: r[idx['Department']],
             faculty: r[idx['Faculty']],
-            type: r[idx['Type']],
+            type: r[idx['Type']], // theory or lab
             section: r[idx['Section']],
             meetings: [],
             room: r[idx['Room']],
             free,
-            status: status
+            status: status // pick status from uploaded file
           };
           depts.add(courses[key].dept);
         } else {
+          // If room value differs, append it
           const currentRoom = courses[key].room;
           const newRoom = r[idx['Room']];
           if (!currentRoom.includes(newRoom)) {
@@ -202,11 +350,13 @@
         }
       });
 
+      // Group courses by title
       Object.values(courses).forEach(info => {
         groupedCourses[info.title] = groupedCourses[info.title] || [];
         groupedCourses[info.title].push(info);
       });
 
+      // Initialize dropdown filters and enable controls
       document.getElementById('deptFilter').innerHTML = ['<option value="">All Departments</option>']
         .concat(Array.from(depts).map(d => `<option>${d}</option>`)).join('');
       document.getElementById('searchInput').disabled = false;
@@ -215,7 +365,7 @@
       renderCourseList();
     }
 
-    // Render course list based on search term and filters.
+    // Render course list based on search term, department, and class type filters.
     function renderCourseList() {
       const query = document.getElementById('searchInput').value.trim().toLowerCase();
       const dept = document.getElementById('deptFilter').value;
@@ -224,8 +374,10 @@
       listEl.innerHTML = '';
 
       const filteredTitles = Object.keys(groupedCourses).filter(title => {
+        // Filter on title search and department match.
         const titleMatch = !query || title.toLowerCase().includes(query);
         const deptMatch = !dept || groupedCourses[title][0].dept === dept;
+        // Filter based on class type if selected.
         const typeMatch = !classType || groupedCourses[title][0].type.toLowerCase() === classType;
         return titleMatch && deptMatch && typeMatch;
       });
@@ -239,6 +391,7 @@
       filteredTitles.sort().forEach(title => {
         groupedCourses[title].forEach((info, index) => {
           const btnId = `btn-${title.replace(/\W/g, '')}-${info.section}`;
+          // Disable button if course already selected or if its status is Reserved.
           const alreadySelected = selectedCourses.some(course => course && course.title === title && course.section === info.section);
           const disabled = alreadySelected || info.status.toLowerCase() === "reserved" ? 'disabled' : '';
           const days = info.meetings.map(m => m.day).join(', ');
@@ -267,6 +420,7 @@
     // Add course to selected list.
     function addCourse(title, idx) {
       const info = groupedCourses[title][idx];
+      // Check using both title and section so that different sections can be added.
       if (selectedCourses.some(course => course && course.title === title && course.section === info.section)) {
         return notify('Course already selected', 'error');
       }
@@ -367,7 +521,8 @@
       document.getElementById('downloadPdf').disabled = false;
     }
 
-    // Render the routine table.
+    // Render the routine table with days sorted as Sunday, Monday, ...
+    // and time slots sorted from earliest AM to latest PM.
     function renderRoutine(rows) {
       const container = document.getElementById('routine');
       container.innerHTML = '';
@@ -375,10 +530,12 @@
         container.textContent = 'No courses scheduled.';
         return;
       }
+      // Define order for days
       const dayOrder = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
       const daysSet = new Set(rows.map(r => r.day));
       const days = dayOrder.filter(day => daysSet.has(day));
 
+      // Sort slots according to their start time
       const slotsSet = new Set(rows.map(r => r.time));
       let slots = Array.from(slotsSet);
       slots.sort((a, b) => {
@@ -452,227 +609,3 @@
 </script>
 </body>
 </html>
-<style>
-    /* Reset & Global Styles */
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    html {
-      -webkit-text-size-adjust: 100%;
-      -ms-text-size-adjust: 100%;
-      text-size-adjust: 100%;
-    }
-
-    body {
-      font-family: Arial, sans-serif;
-      background: #f5f5f5;
-      color: #333;
-      margin: 0;
-      overflow-x: hidden; /* Prevent horizontal scrolling */
-    }
-
-    /* Main Layout */
-    .container {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-      padding: 20px;
-    }
-
-    header {
-      grid-column: 1 / -1;
-      background: #007bff;
-      color: #fff;
-      padding: 15px;
-      text-align: center;
-    }
-
-    /* Panel */
-    .panel {
-      background: #fff;
-      padding: 15px;
-      border-radius: 6px;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    /* Controls */
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-bottom: 15px;
-    }
-
-    .controls input,
-    .controls select {
-      flex: 1;
-      min-width: 150px;
-    }
-
-    input,
-    select,
-    .btn {
-      padding: 8px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-    }
-
-    .btn {
-      cursor: pointer;
-      font-weight: bold;
-      background: #007bff;
-      color: #fff;
-      border: none;
-    }
-
-    .btn:disabled {
-      background: #ccc;
-      cursor: not-allowed;
-    }
-
-    /* Table Styling */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-    }
-
-    th,
-    td {
-      border: 1px solid #ddd;
-      padding: 8px;
-      text-align: center;
-    }
-
-    th {
-      background: #f0f0f0;
-      user-select: none;
-    }
-
-    th.sortable:hover {
-      background: #e0e0e0;
-      cursor: pointer;
-    }
-
-    /* Notification */
-    .notification {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      padding: 10px 15px;
-      border-radius: 4px;
-      color: #fff;
-      display: none;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-    }
-
-    .notification.success {
-      background: #28a745;
-    }
-
-    .notification.error {
-      background: #dc3545;
-    }
-
-    .input-error {
-      border: 2px solid #dc3545;
-    }
-
-    /* Total Count */
-    #totalCount {
-      margin-top: 10px;
-      font-weight: bold;
-      text-align: right;
-    }
-
-    /* Responsive Mobile Styles */
-
-    /* For large devices & small laptops (max-width: 1024px) */
-    @media (max-width: 1024px) {
-      .container {
-        padding: 15px;
-        gap: 15px;
-      }
-      header {
-        padding: 12px;
-        font-size: 1.05em;
-      }
-    }
-
-    /* For Tablets (max-width: 768px) */
-    @media (max-width: 768px) {
-      .container {
-        grid-template-columns: 1fr;
-        padding: 10px;
-        gap: 10px;
-      }
-      header {
-        padding: 10px;
-        font-size: 1.1em;
-      }
-      .controls {
-        flex-direction: column;
-      }
-      table, th, td {
-        font-size: 0.9em;
-      }
-    }
-
-    /* For Larger Phones (414px to 480px) */
-    @media (max-width: 480px) and (min-width: 414px) {
-      .container {
-        padding: 8px;
-        gap: 8px;
-      }
-      header {
-        padding: 8px;
-        font-size: 1em;
-      }
-      .controls input,
-      .controls select {
-        width: 100%;
-      }
-    }
-
-    /* For Small Phones (360px to 413px) */
-    @media (max-width: 413px) and (min-width: 360px) {
-      .container {
-        padding: 6px;
-        gap: 6px;
-      }
-      header {
-        padding: 7px;
-        font-size: 0.95em;
-      }
-      .controls input,
-      .controls select,
-      .btn {
-        font-size: 0.9em;
-        padding: 7px;
-      }
-    }
-
-    /* For Extra Small Phones (less than 360px) */
-    @media (max-width: 359px) {
-      .container {
-        padding: 6px;
-        gap: 6px;
-      }
-      header {
-        padding: 6px;
-        font-size: 0.9em;
-      }
-      .controls input,
-      .controls select,
-      .btn {
-        font-size: 0.85em;
-        padding: 6px;
-      }
-      body {
-        font-size: 0.85em;
-      }
-    }
-</style>
