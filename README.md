@@ -6,7 +6,7 @@ Upload your offered courses file.
 ### Step 2
 Add courses (maximum limit: **37**).  
 If the number of students exceeds 37, the section will not be visible in the system.  
-Please contact the teacher.  
+ 
 
 
 ### Step 3
