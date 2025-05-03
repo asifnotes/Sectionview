@@ -224,7 +224,30 @@
     let selectedCourses = [];
     let sortAscending = true;
 
-    // Initialization function to wire-up all event listeners
+    // Load any persisted data from localStorage
+    function loadDataFromLocalStorage() {
+      const storedCourses = localStorage.getItem('courses');
+      const storedGrouped = localStorage.getItem('groupedCourses');
+      if (storedCourses && storedGrouped) {
+        courses = JSON.parse(storedCourses);
+        groupedCourses = JSON.parse(storedGrouped);
+        // Enable controls for filtering and searching
+        document.getElementById('searchInput').disabled = false;
+        document.getElementById('deptFilter').disabled = false;
+        document.getElementById('classTypeFilter').disabled = false;
+        document.getElementById('clearAll').disabled = false;
+        // Rebuild the department filter options from available courses
+        const depts = new Set();
+        Object.values(courses).forEach(c => {
+          if(c.dept) depts.add(c.dept);
+        });
+        document.getElementById('deptFilter').innerHTML = ['<option value="">All Departments</option>']
+          .concat(Array.from(depts).map(d => `<option>${d}</option>`)).join('');
+        renderCourseList();
+      }
+    }
+
+    // Initialization function to wire-up all event listeners and load persisted data
     function init() {
       document.getElementById('dropZone').addEventListener('click', () => {
         document.getElementById('fileInput').click();
@@ -241,6 +264,8 @@
         sortSelectedCourses('code', sortAscending);
         renderSelectedTable();
       });
+      // Load persisted data if it exists
+      loadDataFromLocalStorage();
     }
 
     // Notification helper
@@ -252,9 +277,11 @@
       setTimeout(() => el.style.display = 'none', 3000);
     }
 
-    // Clear all courses and reload the page
+    // Clear all courses: clear persistent storage and reload the page
     function clearAll() {
       if (confirm("Are you sure you want to clear all?")) {
+        localStorage.removeItem('courses');
+        localStorage.removeItem('groupedCourses');
         location.reload();
       }
     }
@@ -355,6 +382,10 @@
         groupedCourses[info.title] = groupedCourses[info.title] || [];
         groupedCourses[info.title].push(info);
       });
+
+      // Persist the data in localStorage
+      localStorage.setItem('courses', JSON.stringify(courses));
+      localStorage.setItem('groupedCourses', JSON.stringify(groupedCourses));
 
       // Initialize dropdown filters and enable controls
       document.getElementById('deptFilter').innerHTML = ['<option value="">All Departments</option>']
