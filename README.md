@@ -7,11 +7,14 @@ Upload your offered courses file.
 Add courses (maximum limit: **37**).  
 If the number of students exceeds 37, the section will not be visible in the system.  
 Please contact the teacher.  
-**Freshers' sections are not available.**
+
 
 ### Step 3
 Generate the routine.  
 Check for any clashes, and change sections.
+
+### Step 4
+Download the routine. 
 
 ---
 
