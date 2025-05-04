@@ -18,4 +18,4 @@ Download the routine.
 
 ---
 
-**Note:** If you have any confusion, please check the main offered courses file.
+**Note:** If you have any confusion, please check the main offered courses file.You can't add a reserved section course.
