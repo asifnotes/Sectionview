@@ -224,6 +224,21 @@
     let selectedCourses = [];
     let sortAscending = true;
 
+    // Helper: Normalize day names (convert abbreviated to full names)
+    function normalizeDay(dayStr) {
+      const mapping = {
+        "Mon": "Monday",
+        "Tue": "Tuesday",
+        "Wed": "Wednesday",
+        "Thu": "Thursday",
+        "Fri": "Friday",
+        "Sat": "Saturday",
+        "Sun": "Sunday"
+      };
+      const key = dayStr.trim();
+      return mapping[key] || key;
+    }
+
     // Load any persisted data from localStorage
     function loadDataFromLocalStorage() {
       const storedCourses = localStorage.getItem('courses');
@@ -345,6 +360,9 @@
         // Skip row if missing title, no free seats or if class is for freshmen.
         if (!title || free === 0 || /freshman/i.test(title)) return;
         const key = title + '|' + r[idx['Section']];
+        // Normalize day and add room as meeting property
+        const dayNormalized = normalizeDay(r[idx['Day']]);
+
         if (!courses[key]) {
           courses[key] = {
             code: r[idx['Course Code']],
@@ -353,25 +371,20 @@
             faculty: r[idx['Faculty']],
             type: r[idx['Type']], // theory or lab
             section: r[idx['Section']],
-            meetings: [],
-            room: r[idx['Room']],
             free,
-            status: status // pick status from uploaded file
+            status: status, // pick status from uploaded file
+            meetings: []  // meetings will contain day, start, end, and room
           };
           depts.add(courses[key].dept);
-        } else {
-          // If room value differs, append it
-          const currentRoom = courses[key].room;
-          const newRoom = r[idx['Room']];
-          if (!currentRoom.includes(newRoom)) {
-            courses[key].room += ", " + newRoom;
-          }
         }
+        // Create a meeting with day, time and room details.
         const meeting = {
-          day: r[idx['Day']],
+          day: dayNormalized,
           start: r[idx['Start Time']],
-          end: r[idx['End Time']]
+          end: r[idx['End Time']],
+          room: r[idx['Room']]
         };
+        // Add meeting if not already present.
         if (!courses[key].meetings.some(m => m.day === meeting.day && m.start === meeting.start && m.end === meeting.end)) {
           courses[key].meetings.push(meeting);
         }
@@ -427,6 +440,8 @@
           const disabled = alreadySelected || info.status.toLowerCase() === "reserved" ? 'disabled' : '';
           const days = info.meetings.map(m => m.day).join(', ');
           const times = info.meetings.map(m => `${m.start}-${m.end}`).join('; ');
+          // Compute unique room list from meetings
+          const rooms = [...new Set(info.meetings.map(m => m.room))].join(', ');
           const div = document.createElement('div');
           div.className = 'section-item';
           div.innerHTML = `
@@ -434,7 +449,7 @@
               <strong>${info.code} - ${title} (${info.section})</strong>
               <div class="details">
                 ${days} ${times}<br>
-                Room: ${info.room}<br>
+                Room: ${rooms}<br>
                 Dept: ${info.dept}<br>
                 Free Seats: ${info.free}<br>
                 Type: ${info.type}<br>
@@ -542,7 +557,7 @@
             code: course.code,
             sec: course.section,
             title: course.title,
-            room: course.room,
+            room: m.room,
             assigned: conflict ? '' : (num > course.free ? 'Over cap' : num),
             status: conflict ? 'Time conflict' : ''
           });
@@ -614,6 +629,8 @@
         if (!course) return;
         const days = course.meetings.map(m => m.day).join(', ');
         const times = course.meetings.map(m => `${m.start}-${m.end}`).join('; ');
+        // Compute unique room list from meetings
+        const rooms = [...new Set(course.meetings.map(m => m.room))].join(', ');
         const row = document.createElement('tr');
         row.id = `sel-${i}`;
         row.innerHTML = `
@@ -622,7 +639,7 @@
           <td>${course.section}</td>
           <td>${days}</td>
           <td>${times}</td>
-          <td>${course.room}</td>
+          <td>${rooms}</td>
           <td>
             <input type="number" id="num-${i}" min="1" max="${course.free}" placeholder="Fill student number"
               onblur="validateInput(this, ${course.free}); updateTotalCount();" onchange="updateTotalCount();">
