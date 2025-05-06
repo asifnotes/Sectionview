@@ -11,7 +11,8 @@ If the number of students exceeds 37, the section will not be visible in the sys
 
 ### Step 3
 Generate the routine.  
-Check for any clashes, and change sections.
+Check for any clashes, please change the sections. 
+
 
 ### Step 4
 Download the routine. 
