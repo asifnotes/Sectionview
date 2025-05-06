@@ -262,13 +262,27 @@
       }
     }
 
+    // Debounce helper: delays execution until a specified time has passed
+    function debounce(func, delay) {
+      let timer;
+      return function(...args) {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          func.apply(this, args);
+        }, delay);
+      };
+    }
+
     // Initialization function to wire-up all event listeners and load persisted data
     function init() {
       document.getElementById('dropZone').addEventListener('click', () => {
         document.getElementById('fileInput').click();
       });
       document.getElementById('fileInput').addEventListener('change', handleFile);
-      document.getElementById('searchInput').addEventListener('input', renderCourseList);
+
+      // Use the debounced version of renderCourseList for the search input.
+      document.getElementById('searchInput').addEventListener('input', debounce(renderCourseList, 300));
+
       document.getElementById('deptFilter').addEventListener('change', renderCourseList);
       document.getElementById('classTypeFilter').addEventListener('change', renderCourseList);
       document.getElementById('clearAll').addEventListener('click', clearAll);
